@@ -69,7 +69,8 @@ def divisible_shape(divisor: AxesLike, axes: AxesLike = None, padding_values: Un
 
 
 def patches_grid(patch_size: AxesLike, stride: AxesLike, axes: AxesLike = None,
-                 padding_values: Union[AxesParams, Callable] = 0, ratio: AxesParams = 0.5):
+                 padding_values: Union[AxesParams, Callable] = 0, ratio: AxesParams = 0.5, outliers=False,
+                 check_f=None, scale=1):
     """
     Divide an incoming array into patches of corresponding ``patch_size`` and ``stride`` and then combine
     predicted patches by averaging the overlapping regions.
@@ -93,10 +94,16 @@ def patches_grid(patch_size: AxesLike, stride: AxesLike, axes: AxesLike = None,
                 x = pad_to_shape(x, new_shape, axes, padding_values, ratio)
 
             patches = map(predict, divide(x, patch_size, stride, axes))
-            prediction = combine(patches, extract(x.shape, axes), stride, axes)
+
+            if outliers:
+                patches, outliers_masks = zip(*map(check_f, patches))
+                prediction = combine(patches, extract(np.array(x.shape) / scale, axes), np.array(stride) / scale, axes,
+                                     outliers_masks=outliers_masks)
+            else:
+                prediction = combine(patches, extract(np.array(x.shape) / scale, axes), np.array(stride) / scale, axes)
 
             if valid:
-                prediction = crop_to_shape(prediction, shape, axes, ratio)
+                prediction = crop_to_shape(prediction, shape / scale, axes, ratio)
             return prediction
 
         return wrapper

@@ -73,10 +73,17 @@ def divide(x: np.ndarray, patch_size: AxesLike, stride: AxesLike, axes: AxesLike
 
 
 def combine(patches: Iterable[np.ndarray], output_shape: AxesLike, stride: AxesLike,
-            axes: AxesLike = None, valid: bool = False) -> np.ndarray:
+            axes: AxesLike = None, valid: bool = False, outliers_masks: Iterable[np.ndarray] = None) -> np.ndarray:
     """
     Build a tensor of shape ``output_shape`` from ``patches`` obtained in a convolution-like approach
     with corresponding parameters. The overlapping parts are averaged.
+
+    Sometimes we need to ignore the predicted objects that were not fully covered with a sliding window.
+    Say, you are solving a task of vertebra detection and quite often the vertebrae don't fit the crop size. In such
+    cases the model will predict lots of keypoints 'blindfolded', so we'd like to ignore such predictions.
+
+    For this purpose 'outliers' option in 'patches_grid' function was written. If you want to use it, you also need
+    to pass 'outliers mask' to the 'combine' function
 
     References
     ----------
@@ -98,6 +105,13 @@ def combine(patches: Iterable[np.ndarray], output_shape: AxesLike, stride: AxesL
         slc = build_slices(*box)
         result[slc] += patch
         counts[slc] += 1
+
+    if outliers_masks:
+        outliers_combined = np.zeros(output_shape, int)
+        for box, patch in zip_equal(get_boxes(output_shape, patch_size, stride, axes, valid), outliers_masks):
+            slc = build_slices(*box)
+            outliers_combined[slc] += patch
+        counts -= outliers_combined
 
     np.true_divide(result, counts, out=result, where=counts > 0)
     return result
