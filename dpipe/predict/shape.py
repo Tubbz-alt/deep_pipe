@@ -79,35 +79,39 @@ def divisible_shape(divisor: AxesLike, axes: AxesLike = None, padding_values: Un
 
 
 def patches_grid(patch_size: AxesLike, stride: AxesLike, axes: AxesLike = None,
-                 padding_values: Union[AxesParams, Callable] = 0, ratio: AxesParams = 0.5):
+                 padding_values: Union[AxesParams, Callable] = 0, ratio: AxesParams = 0.5, outliers=False,
+                 check_f=None, scale=1):
     """
     Divide an incoming array into patches of corresponding ``patch_size`` and ``stride`` and then combine
     predicted patches by averaging the overlapping regions.
-
     If ``padding_values`` is not None, the array will be padded to an appropriate shape to make a valid division.
     Afterwards the padding is removed.
-
     References
     ----------
     `grid.divide`, `grid.combine`, `pad_to_shape`
     """
-    axes, patch_size, stride = broadcast_to_axes(axes, patch_size, stride)
+    axes, path_size, stride = broadcast_to_axes(axes, patch_size, stride)
     valid = padding_values is not None
 
     def decorator(predict):
-        @wraps(predict)
-        def wrapper(x, *args, **kwargs):
+        def wrapper(x):
             if valid:
                 shape = np.array(x.shape)[list(axes)]
                 padded_shape = np.maximum(shape, patch_size)
                 new_shape = padded_shape + (stride - padded_shape + patch_size) % stride
                 x = pad_to_shape(x, new_shape, axes, padding_values, ratio)
 
-            patches = pmap(predict, divide(x, patch_size, stride, axes), *args, **kwargs)
-            prediction = combine(patches, extract(x.shape, axes), stride, axes)
+            patches = map(predict, divide(x, patch_size, stride, axes))
+
+            if outliers:
+                patches, outliers_masks = zip(*map(check_f, patches))
+                prediction = combine(patches, extract(np.array(x.shape) / scale, axes), np.array(stride) / scale, axes,
+                                     outliers_masks=outliers_masks)
+            else:
+                prediction = combine(patches, extract(np.array(x.shape) / scale, axes), np.array(stride) / scale, axes)
 
             if valid:
-                prediction = crop_to_shape(prediction, shape, axes, ratio)
+                prediction = crop_to_shape(prediction, shape / scale, axes, ratio)
             return prediction
 
         return wrapper
